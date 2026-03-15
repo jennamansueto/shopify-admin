@@ -115,30 +115,26 @@ export async function GET(request: NextRequest) {
       percentage: currentOrderCount > 0 ? Math.round((count / currentOrderCount) * 1000) / 10 : 0,
     }))
 
-    // Top products
-    const lineItems = await prisma.orderLineItem.findMany({
-      where: {
-        order: {
-          createdAt: { gte: periodStart },
-          ...channelFilter,
-        },
-      },
-      include: { product: true },
-    })
-
+    // Top products — fetch line items per order for accurate per-order attribution
     const productSales: Record<string, { id: string; title: string; sku: string; totalSold: number; revenue: number }> = {}
-    for (const item of lineItems) {
-      if (!productSales[item.productId]) {
-        productSales[item.productId] = {
-          id: item.productId,
-          title: item.title,
-          sku: item.sku,
-          totalSold: 0,
-          revenue: 0,
+    for (const order of currentOrders) {
+      const orderLineItems = await prisma.orderLineItem.findMany({
+        where: { orderId: order.id },
+        include: { product: true },
+      })
+      for (const item of orderLineItems) {
+        if (!productSales[item.productId]) {
+          productSales[item.productId] = {
+            id: item.productId,
+            title: item.title,
+            sku: item.sku,
+            totalSold: 0,
+            revenue: 0,
+          }
         }
+        productSales[item.productId].totalSold += item.quantity
+        productSales[item.productId].revenue += item.total
       }
-      productSales[item.productId].totalSold += item.quantity
-      productSales[item.productId].revenue += item.total
     }
 
     const topProducts = Object.values(productSales)
