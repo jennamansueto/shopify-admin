@@ -163,7 +163,13 @@ export default function AnalyticsPage() {
       p.revenue.toFixed(2),
     ])
 
-    const csv = [headers, ...rows].map((row) => row.join(',')).join('\n')
+    const escapeCSV = (val: string) => {
+      if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+        return `"${val.replace(/"/g, '""')}"`
+      }
+      return val
+    }
+    const csv = [headers, ...rows].map((row) => row.map(escapeCSV).join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')

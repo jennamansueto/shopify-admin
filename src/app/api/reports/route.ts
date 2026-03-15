@@ -100,12 +100,20 @@ async function simulateReportProcessing(reportId: string) {
       reportId,
       error: error instanceof Error ? error.message : 'Unknown error',
     })
-    await prisma.reportJob.update({
-      where: { id: reportId },
-      data: {
-        status: 'failed',
-        completedAt: new Date(),
-      },
-    })
+    try {
+      await prisma.reportJob.update({
+        where: { id: reportId },
+        data: {
+          status: 'failed',
+          completedAt: new Date(),
+        },
+      })
+    } catch (updateError) {
+      logger.error('Failed to update report status to failed', {
+        requestId,
+        reportId,
+        error: updateError instanceof Error ? updateError.message : 'Unknown error',
+      })
+    }
   }
 }
