@@ -137,11 +137,15 @@ export default function AnalyticsPage() {
         }
       }, 2000)
 
-      // Timeout after 30 seconds
+      // Safety timeout — stop polling after 5 minutes to avoid memory leaks
+      // (reports typically complete within 10 seconds)
       setTimeout(() => {
         clearInterval(pollInterval)
-        setGeneratingReport(false)
-      }, 30000)
+        if (generatingReport) {
+          setGeneratingReport(false)
+          toast.error('Report generation timed out. Please try again or check the Reports page.')
+        }
+      }, 300000)
     } catch (err) {
       setGeneratingReport(false)
       toast.error(err instanceof Error ? err.message : 'Failed to generate report')

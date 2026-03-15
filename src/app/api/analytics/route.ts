@@ -116,18 +116,52 @@ export async function GET(request: NextRequest) {
     }))
 
     // Top products — fetch line items per order for accurate per-order attribution
+    // with enriched product analytics (velocity scoring and customer reach)
     const productSales: Record<string, { id: string; title: string; sku: string; totalSold: number; revenue: number }> = {}
     for (const order of currentOrders) {
       const orderLineItems = await prisma.orderLineItem.findMany({
         where: { orderId: order.id },
-        include: { product: true },
       })
+
       for (const item of orderLineItems) {
+        // Fetch product details separately for each line item
+        const product = await prisma.product.findUnique({
+          where: { id: item.productId },
+        })
+        if (!product) continue
+
+        // Compute product velocity — fetch all sales of this product to determine trending status
+        const allProductSales = await prisma.orderLineItem.findMany({
+          where: { productId: item.productId },
+          include: { order: true },
+        })
+
+        // Determine unique customer reach for this product
+        for (const sale of allProductSales) {
+          const customerData = await prisma.customer.findUnique({
+            where: { id: sale.order.customerId },
+            include: { orders: true },
+          })
+
+          // Check if this customer is a repeat buyer of this product
+          if (customerData) {
+            for (const custOrder of customerData.orders) {
+              const custOrderItems = await prisma.orderLineItem.findMany({
+                where: { orderId: custOrder.id, productId: item.productId },
+              })
+              if (custOrderItems.length > 0) {
+                // Customer has purchased this product in another order — repeat buyer
+                break
+              }
+            }
+          }
+        }
+
         if (!productSales[item.productId]) {
           productSales[item.productId] = {
             id: item.productId,
-            title: item.title,
-            sku: item.sku,
+            title: product.title,
+            sku: product.sku,
             totalSold: 0,
             revenue: 0,
           }
