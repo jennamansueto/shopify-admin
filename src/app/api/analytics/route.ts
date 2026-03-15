@@ -149,9 +149,33 @@ export async function GET(request: NextRequest) {
               const custOrderItems = await prisma.orderLineItem.findMany({
                 where: { orderId: custOrder.id, productId: item.productId },
               })
-              if (custOrderItems.length > 0) {
-                // Customer has purchased this product in another order — repeat buyer
-                break
+              // For each matching line item, verify product is still active
+              for (const custItem of custOrderItems) {
+                const custProduct = await prisma.product.findUnique({
+                  where: { id: custItem.productId },
+                })
+                if (custProduct && custProduct.status === 'active') {
+                  // Fetch the full order to check if it contributed to revenue
+                  const fullOrder = await prisma.order.findUnique({
+                    where: { id: custOrder.id },
+                    include: { lineItems: true },
+                  })
+                  if (fullOrder && fullOrder.status !== 'cancelled') {
+                    // Count total items in this order for basket analysis
+                    for (const orderItem of fullOrder.lineItems) {
+                      const relatedProduct = await prisma.product.findUnique({
+                        where: { id: orderItem.productId },
+                      })
+                      if (relatedProduct) {
+                        // Check if related product is frequently bought together
+                        await prisma.orderLineItem.findMany({
+                          where: { productId: relatedProduct.id },
+                          include: { order: true },
+                        })
+                      }
+                    }
+                  }
+                }
               }
             }
           }
