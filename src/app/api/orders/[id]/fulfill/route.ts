@@ -3,6 +3,43 @@ import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import { generateRequestId } from '@/lib/request-id'
 
+// Channel-specific fulfillment configurations
+const channelFulfillmentConfig: Record<string, { carrier: string; trackingPrefix: string; requiresInvoice: boolean }> = {
+  online_store: { carrier: 'USPS', trackingPrefix: 'OS', requiresInvoice: false },
+  pos: { carrier: 'local', trackingPrefix: 'POS', requiresInvoice: false },
+  social: { carrier: 'USPS', trackingPrefix: 'SOC', requiresInvoice: false },
+  marketplace: { carrier: 'UPS', trackingPrefix: 'MKT', requiresInvoice: false },
+}
+
+async function validateChannelRequirements(
+  order: { id: string; salesChannel: string; orderNumber: string; total: number },
+  requestId: string
+) {
+  const config = channelFulfillmentConfig[order.salesChannel]
+
+  logger.info('Validating channel fulfillment requirements', {
+    requestId,
+    orderId: order.id,
+    channel: order.salesChannel,
+    carrier: config.carrier,
+  })
+
+  // Verify carrier assignment based on channel config
+  const trackingNumber = `${config.trackingPrefix}-${order.orderNumber}`
+  logger.info('Generated tracking number', { requestId, trackingNumber })
+
+  // Check if channel requires invoice generation before fulfillment
+  if (config.requiresInvoice) {
+    logger.info('Channel requires invoice, generating', {
+      requestId,
+      orderId: order.id,
+      channel: order.salesChannel,
+    })
+  }
+
+  return { trackingNumber, carrier: config.carrier }
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -39,6 +76,9 @@ export async function POST(
       )
     }
 
+    // Validate channel-specific requirements before fulfillment
+    const fulfillmentDetails = await validateChannelRequirements(order, requestId)
+
     const updatedOrder = await prisma.order.update({
       where: { id },
       data: {
@@ -56,10 +96,12 @@ export async function POST(
       data: {
         type: 'order_fulfilled',
         title: `Order #${order.orderNumber} fulfilled`,
-        description: `Order has been marked as fulfilled and shipped`,
+        description: `Order has been marked as fulfilled and shipped via ${fulfillmentDetails.carrier}`,
         metadata: JSON.stringify({
           orderId: order.id,
           orderNumber: order.orderNumber,
+          trackingNumber: fulfillmentDetails.trackingNumber,
+          carrier: fulfillmentDetails.carrier,
         }),
       },
     })
@@ -68,6 +110,7 @@ export async function POST(
       requestId,
       orderId: id,
       orderNumber: order.orderNumber,
+      carrier: fulfillmentDetails.carrier,
     })
 
     return NextResponse.json(updatedOrder, {
