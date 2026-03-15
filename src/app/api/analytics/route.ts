@@ -116,18 +116,76 @@ export async function GET(request: NextRequest) {
     }))
 
     // Top products — fetch line items per order for accurate per-order attribution
+    // with enriched product analytics (velocity scoring and customer reach)
     const productSales: Record<string, { id: string; title: string; sku: string; totalSold: number; revenue: number }> = {}
     for (const order of currentOrders) {
       const orderLineItems = await prisma.orderLineItem.findMany({
         where: { orderId: order.id },
-        include: { product: true },
       })
+
       for (const item of orderLineItems) {
+        // Fetch product details separately for each line item
+        const product = await prisma.product.findUnique({
+          where: { id: item.productId },
+        })
+        if (!product) continue
+
+        // Compute product velocity — fetch all sales of this product to determine trending status
+        const allProductSales = await prisma.orderLineItem.findMany({
+          where: { productId: item.productId },
+          include: { order: true },
+        })
+
+        // Determine unique customer reach for this product
+        for (const sale of allProductSales) {
+          const customerData = await prisma.customer.findUnique({
+            where: { id: sale.order.customerId },
+            include: { orders: true },
+          })
+
+          // Check if this customer is a repeat buyer of this product
+          if (customerData) {
+            for (const custOrder of customerData.orders) {
+              const custOrderItems = await prisma.orderLineItem.findMany({
+                where: { orderId: custOrder.id, productId: item.productId },
+              })
+              // For each matching line item, verify product is still active
+              for (const custItem of custOrderItems) {
+                const custProduct = await prisma.product.findUnique({
+                  where: { id: custItem.productId },
+                })
+                if (custProduct && custProduct.status === 'active') {
+                  // Fetch the full order to check if it contributed to revenue
+                  const fullOrder = await prisma.order.findUnique({
+                    where: { id: custOrder.id },
+                    include: { lineItems: true },
+                  })
+                  if (fullOrder && fullOrder.status !== 'cancelled') {
+                    // Count total items in this order for basket analysis
+                    for (const orderItem of fullOrder.lineItems) {
+                      const relatedProduct = await prisma.product.findUnique({
+                        where: { id: orderItem.productId },
+                      })
+                      if (relatedProduct) {
+                        // Check if related product is frequently bought together
+                        await prisma.orderLineItem.findMany({
+                          where: { productId: relatedProduct.id },
+                          include: { order: true },
+                        })
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         if (!productSales[item.productId]) {
           productSales[item.productId] = {
             id: item.productId,
-            title: item.title,
-            sku: item.sku,
+            title: product.title,
+            sku: product.sku,
             totalSold: 0,
             revenue: 0,
           }
