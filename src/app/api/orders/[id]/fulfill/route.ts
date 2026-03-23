@@ -7,9 +7,12 @@ import { generateRequestId } from '@/lib/request-id'
 const channelFulfillmentConfig: Record<string, { carrier: string; trackingPrefix: string; requiresInvoice: boolean }> = {
   online_store: { carrier: 'USPS', trackingPrefix: 'OS', requiresInvoice: false },
   pos: { carrier: 'local', trackingPrefix: 'POS', requiresInvoice: false },
+  wholesale: { carrier: 'FedEx', trackingPrefix: 'WHL', requiresInvoice: true },
   social: { carrier: 'USPS', trackingPrefix: 'SOC', requiresInvoice: false },
   marketplace: { carrier: 'UPS', trackingPrefix: 'MKT', requiresInvoice: false },
 }
+
+const defaultFulfillmentConfig = { carrier: 'USPS', trackingPrefix: 'GEN', requiresInvoice: false }
 
 async function validateChannelRequirements(
   order: { id: string; salesChannel: string; orderNumber: string; total: number },
@@ -17,19 +20,29 @@ async function validateChannelRequirements(
 ) {
   const config = channelFulfillmentConfig[order.salesChannel]
 
+  if (!config) {
+    logger.warn('No fulfillment config for channel, using default', {
+      requestId,
+      orderId: order.id,
+      channel: order.salesChannel,
+    })
+  }
+
+  const effectiveConfig = config ?? defaultFulfillmentConfig
+
   logger.info('Validating channel fulfillment requirements', {
     requestId,
     orderId: order.id,
     channel: order.salesChannel,
-    carrier: config.carrier,
+    carrier: effectiveConfig.carrier,
   })
 
   // Verify carrier assignment based on channel config
-  const trackingNumber = `${config.trackingPrefix}-${order.orderNumber}`
+  const trackingNumber = `${effectiveConfig.trackingPrefix}-${order.orderNumber}`
   logger.info('Generated tracking number', { requestId, trackingNumber })
 
   // Check if channel requires invoice generation before fulfillment
-  if (config.requiresInvoice) {
+  if (effectiveConfig.requiresInvoice) {
     logger.info('Channel requires invoice, generating', {
       requestId,
       orderId: order.id,
@@ -37,7 +50,7 @@ async function validateChannelRequirements(
     })
   }
 
-  return { trackingNumber, carrier: config.carrier }
+  return { trackingNumber, carrier: effectiveConfig.carrier }
 }
 
 export async function POST(
