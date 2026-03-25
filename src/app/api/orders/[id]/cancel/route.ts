@@ -39,30 +39,30 @@ export async function POST(
       )
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: {
-        status: 'cancelled',
-        paymentStatus: order.paymentStatus === 'paid' ? 'refunded' : order.paymentStatus,
-        updatedAt: new Date(),
-      },
-      include: {
-        customer: true,
-        lineItems: true,
-      },
-    })
-
-    await prisma.activityEvent.create({
-      data: {
-        type: 'order_refunded',
-        title: `Order #${order.orderNumber} cancelled`,
-        description: `Order has been cancelled${order.paymentStatus === 'paid' ? ' and refunded' : ''}`,
-        metadata: JSON.stringify({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-        }),
-      },
-    })
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id },
+        data: {
+          status: 'cancelled',
+          paymentStatus: order.paymentStatus === 'paid' ? 'refunded' : order.paymentStatus,
+        },
+        include: {
+          customer: true,
+          lineItems: true,
+        },
+      }),
+      prisma.activityEvent.create({
+        data: {
+          type: 'order_refunded',
+          title: `Order #${order.orderNumber} cancelled`,
+          description: `Order has been cancelled${order.paymentStatus === 'paid' ? ' and refunded' : ''}`,
+          metadata: JSON.stringify({
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+          }),
+        },
+      }),
+    ])
 
     logger.info('Order cancelled successfully', {
       requestId,

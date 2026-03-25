@@ -31,6 +31,14 @@ export async function POST(
       )
     }
 
+    if (order.status === 'cancelled') {
+      logger.warn('Cannot fulfill cancelled order', { requestId, orderId: id })
+      return NextResponse.json(
+        { error: 'Cannot fulfill a cancelled order' },
+        { status: 400, headers: { 'X-Request-Id': requestId } }
+      )
+    }
+
     if (order.paymentStatus !== 'paid') {
       logger.warn('Cannot fulfill unpaid order', { requestId, orderId: id })
       return NextResponse.json(
@@ -39,30 +47,30 @@ export async function POST(
       )
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: {
-        fulfillmentStatus: 'fulfilled',
-        status: 'shipped',
-        updatedAt: new Date(),
-      },
-      include: {
-        customer: true,
-        lineItems: true,
-      },
-    })
-
-    await prisma.activityEvent.create({
-      data: {
-        type: 'order_fulfilled',
-        title: `Order #${order.orderNumber} fulfilled`,
-        description: `Order has been marked as fulfilled and shipped`,
-        metadata: JSON.stringify({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-        }),
-      },
-    })
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id },
+        data: {
+          fulfillmentStatus: 'fulfilled',
+          status: 'shipped',
+        },
+        include: {
+          customer: true,
+          lineItems: true,
+        },
+      }),
+      prisma.activityEvent.create({
+        data: {
+          type: 'order_fulfilled',
+          title: `Order #${order.orderNumber} fulfilled`,
+          description: `Order has been marked as fulfilled and shipped`,
+          metadata: JSON.stringify({
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+          }),
+        },
+      }),
+    ])
 
     logger.info('Order fulfilled successfully', {
       requestId,
