@@ -7,37 +7,26 @@ import { generateRequestId } from '@/lib/request-id'
 const channelFulfillmentConfig: Record<string, { carrier: string; trackingPrefix: string; requiresInvoice: boolean }> = {
   online_store: { carrier: 'USPS', trackingPrefix: 'OS', requiresInvoice: false },
   pos: { carrier: 'local', trackingPrefix: 'POS', requiresInvoice: false },
+  wholesale: { carrier: 'FedEx', trackingPrefix: 'WHL', requiresInvoice: true },
   social: { carrier: 'USPS', trackingPrefix: 'SOC', requiresInvoice: false },
   marketplace: { carrier: 'UPS', trackingPrefix: 'MKT', requiresInvoice: false },
 }
 
-async function validateChannelRequirements(
-  order: { id: string; salesChannel: string; orderNumber: string; total: number },
-  requestId: string
-) {
-  const config = channelFulfillmentConfig[order.salesChannel]
+const defaultFulfillmentConfig = { carrier: 'USPS', trackingPrefix: 'GEN', requiresInvoice: false }
 
-  logger.info('Validating channel fulfillment requirements', {
-    requestId,
-    orderId: order.id,
-    channel: order.salesChannel,
-    carrier: config.carrier,
-  })
+function getChannelConfig(salesChannel: string, orderId: string, requestId: string) {
+  const config = channelFulfillmentConfig[salesChannel]
 
-  // Verify carrier assignment based on channel config
-  const trackingNumber = `${config.trackingPrefix}-${order.orderNumber}`
-  logger.info('Generated tracking number', { requestId, trackingNumber })
-
-  // Check if channel requires invoice generation before fulfillment
-  if (config.requiresInvoice) {
-    logger.info('Channel requires invoice, generating', {
+  if (!config) {
+    logger.warn('No fulfillment config for channel, using default', {
       requestId,
-      orderId: order.id,
-      channel: order.salesChannel,
+      orderId,
+      channel: salesChannel,
     })
+    return defaultFulfillmentConfig
   }
 
-  return { trackingNumber, carrier: config.carrier }
+  return config
 }
 
 export async function POST(
@@ -68,6 +57,14 @@ export async function POST(
       )
     }
 
+    if (order.status === 'cancelled') {
+      logger.warn('Cannot fulfill cancelled order', { requestId, orderId: id })
+      return NextResponse.json(
+        { error: 'Cannot fulfill a cancelled order' },
+        { status: 400, headers: { 'X-Request-Id': requestId } }
+      )
+    }
+
     if (order.paymentStatus !== 'paid') {
       logger.warn('Cannot fulfill unpaid order', { requestId, orderId: id })
       return NextResponse.json(
@@ -76,41 +73,58 @@ export async function POST(
       )
     }
 
-    // Validate channel-specific requirements before fulfillment
-    const fulfillmentDetails = await validateChannelRequirements(order, requestId)
+    const channelConfig = getChannelConfig(order.salesChannel, order.id, requestId)
+    const trackingNumber = `${channelConfig.trackingPrefix}-${order.orderNumber}`
 
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: {
-        fulfillmentStatus: 'fulfilled',
-        status: 'shipped',
-        updatedAt: new Date(),
-      },
-      include: {
-        customer: true,
-        lineItems: true,
-      },
+    logger.info('Validating channel fulfillment requirements', {
+      requestId,
+      orderId: order.id,
+      channel: order.salesChannel,
+      carrier: channelConfig.carrier,
+      trackingNumber,
     })
 
-    await prisma.activityEvent.create({
-      data: {
-        type: 'order_fulfilled',
-        title: `Order #${order.orderNumber} fulfilled`,
-        description: `Order has been marked as fulfilled and shipped via ${fulfillmentDetails.carrier}`,
-        metadata: JSON.stringify({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          trackingNumber: fulfillmentDetails.trackingNumber,
-          carrier: fulfillmentDetails.carrier,
-        }),
-      },
-    })
+    if (channelConfig.requiresInvoice) {
+      logger.info('Channel requires invoice, generating', {
+        requestId,
+        orderId: order.id,
+        channel: order.salesChannel,
+      })
+    }
+
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id },
+        data: {
+          fulfillmentStatus: 'fulfilled',
+          status: 'shipped',
+        },
+        include: {
+          customer: true,
+          lineItems: true,
+        },
+      }),
+      prisma.activityEvent.create({
+        data: {
+          type: 'order_fulfilled',
+          title: `Order #${order.orderNumber} fulfilled`,
+          description: `Order has been marked as fulfilled and shipped via ${channelConfig.carrier}`,
+          metadata: JSON.stringify({
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            trackingNumber,
+            carrier: channelConfig.carrier,
+          }),
+        },
+      }),
+    ])
 
     logger.info('Order fulfilled successfully', {
       requestId,
       orderId: id,
       orderNumber: order.orderNumber,
-      carrier: fulfillmentDetails.carrier,
+      carrier: channelConfig.carrier,
+      trackingNumber,
     })
 
     return NextResponse.json(updatedOrder, {
