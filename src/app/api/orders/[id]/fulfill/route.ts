@@ -3,6 +3,32 @@ import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import { generateRequestId } from '@/lib/request-id'
 
+// Channel-specific fulfillment configurations
+const channelFulfillmentConfig: Record<string, { carrier: string; trackingPrefix: string; requiresInvoice: boolean }> = {
+  online_store: { carrier: 'USPS', trackingPrefix: 'OS', requiresInvoice: false },
+  pos: { carrier: 'local', trackingPrefix: 'POS', requiresInvoice: false },
+  wholesale: { carrier: 'FedEx', trackingPrefix: 'WHL', requiresInvoice: true },
+  social: { carrier: 'USPS', trackingPrefix: 'SOC', requiresInvoice: false },
+  marketplace: { carrier: 'UPS', trackingPrefix: 'MKT', requiresInvoice: false },
+}
+
+const defaultFulfillmentConfig = { carrier: 'USPS', trackingPrefix: 'GEN', requiresInvoice: false }
+
+function getChannelConfig(salesChannel: string, orderId: string, requestId: string) {
+  const config = channelFulfillmentConfig[salesChannel]
+
+  if (!config) {
+    logger.warn('No fulfillment config for channel, using default', {
+      requestId,
+      orderId,
+      channel: salesChannel,
+    })
+    return defaultFulfillmentConfig
+  }
+
+  return config
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -31,6 +57,14 @@ export async function POST(
       )
     }
 
+    if (order.status === 'cancelled') {
+      logger.warn('Cannot fulfill cancelled order', { requestId, orderId: id })
+      return NextResponse.json(
+        { error: 'Cannot fulfill a cancelled order' },
+        { status: 400, headers: { 'X-Request-Id': requestId } }
+      )
+    }
+
     if (order.paymentStatus !== 'paid') {
       logger.warn('Cannot fulfill unpaid order', { requestId, orderId: id })
       return NextResponse.json(
@@ -39,35 +73,58 @@ export async function POST(
       )
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id },
-      data: {
-        fulfillmentStatus: 'fulfilled',
-        status: 'shipped',
-        updatedAt: new Date(),
-      },
-      include: {
-        customer: true,
-        lineItems: true,
-      },
+    const channelConfig = getChannelConfig(order.salesChannel, order.id, requestId)
+    const trackingNumber = `${channelConfig.trackingPrefix}-${order.orderNumber}`
+
+    logger.info('Validating channel fulfillment requirements', {
+      requestId,
+      orderId: order.id,
+      channel: order.salesChannel,
+      carrier: channelConfig.carrier,
+      trackingNumber,
     })
 
-    await prisma.activityEvent.create({
-      data: {
-        type: 'order_fulfilled',
-        title: `Order #${order.orderNumber} fulfilled`,
-        description: `Order has been marked as fulfilled and shipped`,
-        metadata: JSON.stringify({
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-        }),
-      },
-    })
+    if (channelConfig.requiresInvoice) {
+      logger.info('Channel requires invoice, generating', {
+        requestId,
+        orderId: order.id,
+        channel: order.salesChannel,
+      })
+    }
+
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id },
+        data: {
+          fulfillmentStatus: 'fulfilled',
+          status: 'shipped',
+        },
+        include: {
+          customer: true,
+          lineItems: true,
+        },
+      }),
+      prisma.activityEvent.create({
+        data: {
+          type: 'order_fulfilled',
+          title: `Order #${order.orderNumber} fulfilled`,
+          description: `Order has been marked as fulfilled and shipped via ${channelConfig.carrier}`,
+          metadata: JSON.stringify({
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            trackingNumber,
+            carrier: channelConfig.carrier,
+          }),
+        },
+      }),
+    ])
 
     logger.info('Order fulfilled successfully', {
       requestId,
       orderId: id,
       orderNumber: order.orderNumber,
+      carrier: channelConfig.carrier,
+      trackingNumber,
     })
 
     return NextResponse.json(updatedOrder, {
