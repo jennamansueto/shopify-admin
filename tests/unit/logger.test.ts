@@ -1,47 +1,44 @@
 import { logger } from '@/lib/logger'
 
+type ConsoleMethod = 'log' | 'warn' | 'error' | 'debug'
+
+function spyOnConsole(method: ConsoleMethod) {
+  return jest.spyOn(console, method).mockImplementation()
+}
+
+function parseLogOutput(spy: jest.SpyInstance): Record<string, unknown> {
+  return JSON.parse(spy.mock.calls[0][0])
+}
+
 afterEach(() => {
   jest.restoreAllMocks()
 })
 
-describe('logger.info', () => {
-  it('calls console.log with JSON containing level, message, and timestamp', () => {
-    const spy = jest.spyOn(console, 'log').mockImplementation()
-    logger.info('test message')
+describe.each<{
+  level: 'info' | 'warn' | 'error'
+  consoleMethod: ConsoleMethod
+}>([
+  { level: 'info', consoleMethod: 'log' },
+  { level: 'warn', consoleMethod: 'warn' },
+  { level: 'error', consoleMethod: 'error' },
+])('logger.$level', ({ level, consoleMethod }) => {
+  it(`calls console.${consoleMethod} with JSON containing level=${level}`, () => {
+    const spy = spyOnConsole(consoleMethod)
+    logger[level]('test message')
     expect(spy).toHaveBeenCalledTimes(1)
-    const entry = JSON.parse(spy.mock.calls[0][0])
-    expect(entry.level).toBe('info')
+    const entry = parseLogOutput(spy)
+    expect(entry.level).toBe(level)
     expect(entry.message).toBe('test message')
     expect(entry.timestamp).toBeDefined()
   })
+})
 
+describe('logger.info metadata', () => {
   it('includes metadata fields in the output', () => {
-    const spy = jest.spyOn(console, 'log').mockImplementation()
+    const spy = spyOnConsole('log')
     logger.info('with meta', { requestId: '123' })
-    const entry = JSON.parse(spy.mock.calls[0][0])
+    const entry = parseLogOutput(spy)
     expect(entry.requestId).toBe('123')
-  })
-})
-
-describe('logger.warn', () => {
-  it('calls console.warn with JSON containing level=warn', () => {
-    const spy = jest.spyOn(console, 'warn').mockImplementation()
-    logger.warn('warning message')
-    expect(spy).toHaveBeenCalledTimes(1)
-    const entry = JSON.parse(spy.mock.calls[0][0])
-    expect(entry.level).toBe('warn')
-    expect(entry.message).toBe('warning message')
-  })
-})
-
-describe('logger.error', () => {
-  it('calls console.error with JSON containing level=error', () => {
-    const spy = jest.spyOn(console, 'error').mockImplementation()
-    logger.error('error message')
-    expect(spy).toHaveBeenCalledTimes(1)
-    const entry = JSON.parse(spy.mock.calls[0][0])
-    expect(entry.level).toBe('error')
-    expect(entry.message).toBe('error message')
   })
 })
 
@@ -49,7 +46,7 @@ describe('logger.debug', () => {
   it('does not log when NODE_ENV is not development', () => {
     const originalEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'production'
-    const spy = jest.spyOn(console, 'debug').mockImplementation()
+    const spy = spyOnConsole('debug')
     logger.debug('debug message')
     expect(spy).not.toHaveBeenCalled()
     process.env.NODE_ENV = originalEnv
@@ -58,10 +55,10 @@ describe('logger.debug', () => {
   it('logs when NODE_ENV is development', () => {
     const originalEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'development'
-    const spy = jest.spyOn(console, 'debug').mockImplementation()
+    const spy = spyOnConsole('debug')
     logger.debug('debug message')
     expect(spy).toHaveBeenCalledTimes(1)
-    const entry = JSON.parse(spy.mock.calls[0][0])
+    const entry = parseLogOutput(spy)
     expect(entry.level).toBe('debug')
     expect(entry.message).toBe('debug message')
     process.env.NODE_ENV = originalEnv
@@ -70,9 +67,9 @@ describe('logger.debug', () => {
 
 describe('log entry timestamp', () => {
   it('has ISO timestamp format', () => {
-    const spy = jest.spyOn(console, 'log').mockImplementation()
+    const spy = spyOnConsole('log')
     logger.info('timestamp check')
-    const entry = JSON.parse(spy.mock.calls[0][0])
+    const entry = parseLogOutput(spy)
     expect(entry.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/)
   })
 })
