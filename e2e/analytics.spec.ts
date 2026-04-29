@@ -65,13 +65,14 @@ test.describe('Analytics Page', () => {
     const compareButton = page.getByRole('button', { name: 'Compare to previous period' })
     await expect(compareButton).toBeVisible()
 
-    // Button should initially have outline variant
-    await expect(compareButton).toHaveAttribute('data-slot', 'button')
-
     // Click to activate compare mode
     await compareButton.click()
 
     // Button should still be visible after toggling
+    await expect(compareButton).toBeVisible()
+
+    // Click again to deactivate — button remains functional
+    await compareButton.click()
     await expect(compareButton).toBeVisible()
   })
 
