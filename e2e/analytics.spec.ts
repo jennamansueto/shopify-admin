@@ -94,6 +94,10 @@ test.describe('Analytics Page', () => {
   test('export CSV with no data shows error toast', async ({ page }) => {
     // Intercept the analytics API to return empty top products
     await page.route('**/api/analytics**', async (route) => {
+      if (route.request().url().includes('timeseries')) {
+        await route.continue()
+        return
+      }
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
