@@ -1,5 +1,3 @@
-import { prisma } from '@/lib/prisma'
-
 const BASE_URL = 'http://localhost:3000'
 
 // These tests require the dev server to be running with seeded data.
