@@ -11,7 +11,12 @@
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:reset": "prisma db push --force-reset && npx tsx prisma/seed.ts",
-    "setup": "pnpm install && pnpm db:generate && pnpm db:push && pnpm db:seed"
+    "setup": "pnpm install && pnpm db:generate && pnpm db:push && pnpm db:seed",
+    "test": "jest --forceExit",
+    "test:unit": "jest tests/unit --forceExit",
+    "test:api": "jest tests/api --forceExit --testTimeout=15000",
+    "test:e2e": "playwright test",
+    "test:coverage": "jest --coverage --forceExit"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",
@@ -47,12 +52,17 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.2.1",
+    "@types/jest": "^30.0.0",
     "eslint": "8.57.1",
     "eslint-config-next": "^14.2.35",
+    "jest": "^30.3.0",
     "prettier": "^3.8.1",
     "prisma": "5.22.0",
     "tailwindcss-animate": "^1.0.7",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2",
     "tsx": "^4.19.4"
   }
 }
