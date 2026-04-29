@@ -7,15 +7,26 @@ import { generateRequestId } from '@/lib/request-id'
 const channelFulfillmentConfig: Record<string, { carrier: string; trackingPrefix: string; requiresInvoice: boolean }> = {
   online_store: { carrier: 'USPS', trackingPrefix: 'OS', requiresInvoice: false },
   pos: { carrier: 'local', trackingPrefix: 'POS', requiresInvoice: false },
+  wholesale: { carrier: 'FedEx', trackingPrefix: 'WHL', requiresInvoice: true },
   social: { carrier: 'USPS', trackingPrefix: 'SOC', requiresInvoice: false },
   marketplace: { carrier: 'UPS', trackingPrefix: 'MKT', requiresInvoice: false },
 }
+
+const defaultFulfillmentConfig = { carrier: 'USPS', trackingPrefix: 'GEN', requiresInvoice: false }
 
 async function validateChannelRequirements(
   order: { id: string; salesChannel: string; orderNumber: string; total: number },
   requestId: string
 ) {
-  const config = channelFulfillmentConfig[order.salesChannel]
+  const config = channelFulfillmentConfig[order.salesChannel] ?? defaultFulfillmentConfig
+
+  if (!channelFulfillmentConfig[order.salesChannel]) {
+    logger.warn('Unknown sales channel, using default fulfillment config', {
+      requestId,
+      orderId: order.id,
+      channel: order.salesChannel,
+    })
+  }
 
   logger.info('Validating channel fulfillment requirements', {
     requestId,
