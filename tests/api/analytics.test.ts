@@ -4,6 +4,10 @@ const BASE_URL = 'http://localhost:3000'
 // Run: npm run dev (in another terminal)
 // Then: npx jest tests/api/analytics.test.ts
 
+// The /api/analytics endpoint runs deep N+1 queries (product velocity,
+// basket analysis) that can take 15–30s with seeded data on larger ranges.
+const ANALYTICS_TIMEOUT = 60_000
+
 describe('Analytics API', () => {
   describe('GET /api/analytics', () => {
     it('returns 200 with default parameters', async () => {
@@ -19,7 +23,7 @@ describe('Analytics API', () => {
       expect(Array.isArray(data.ordersByStatus)).toBe(true)
       expect(Array.isArray(data.topProducts)).toBe(true)
       expect(Array.isArray(data.channelBreakdown)).toBe(true)
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('has correct KPIs structure with expected labels', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics`)
@@ -39,7 +43,7 @@ describe('Analytics API', () => {
         expect(kpi).toHaveProperty('trend')
         expect(['up', 'down']).toContain(kpi.trend)
       }
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('accepts range=7 parameter', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics?range=7`)
@@ -50,7 +54,7 @@ describe('Analytics API', () => {
       expect(data).toHaveProperty('ordersByStatus')
       expect(data).toHaveProperty('topProducts')
       expect(data).toHaveProperty('channelBreakdown')
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('accepts range=90 parameter', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics?range=90`)
@@ -61,7 +65,7 @@ describe('Analytics API', () => {
       expect(data).toHaveProperty('ordersByStatus')
       expect(data).toHaveProperty('topProducts')
       expect(data).toHaveProperty('channelBreakdown')
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('filters by channel', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics?channel=online_store`)
@@ -85,7 +89,7 @@ describe('Analytics API', () => {
         expect(kpi).toHaveProperty('changeLabel')
         expect(kpi).toHaveProperty('trend')
       }
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('has correct ordersByStatus structure with percentages summing to ~100', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics`)
@@ -108,7 +112,7 @@ describe('Analytics API', () => {
         expect(totalPercentage).toBeGreaterThanOrEqual(99)
         expect(totalPercentage).toBeLessThanOrEqual(101)
       }
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('has correct topProducts structure sorted by revenue descending', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics`)
@@ -129,7 +133,7 @@ describe('Analytics API', () => {
           data.topProducts[i].revenue,
         )
       }
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('has correct channelBreakdown structure', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics`)
@@ -145,12 +149,12 @@ describe('Analytics API', () => {
         expect(typeof item.orders).toBe('number')
         expect(typeof item.percentage).toBe('number')
       }
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('returns X-Request-Id header', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics`)
       expect(res.headers.get('X-Request-Id')).toBeTruthy()
-    })
+    }, ANALYTICS_TIMEOUT)
 
     it('handles invalid range parameter', async () => {
       const res = await fetch(`${BASE_URL}/api/analytics?range=abc`)
