@@ -3,6 +3,8 @@ import {
   formatNumber,
   formatDate,
   formatDateTime,
+  formatPercentage,
+  timeAgo,
   getStatusColor,
   formatStatusLabel,
   cn,
@@ -76,6 +78,59 @@ describe('formatStatusLabel', () => {
 
   it('capitalizes single word', () => {
     expect(formatStatusLabel('pending')).toBe('Pending')
+  })
+})
+
+describe('formatPercentage', () => {
+  it("returns '+5.0%' for 5", () => {
+    expect(formatPercentage(5)).toBe('+5.0%')
+  })
+
+  it("returns '-3.2%' for -3.2", () => {
+    expect(formatPercentage(-3.2)).toBe('-3.2%')
+  })
+
+  it("returns '+0.0%' for 0", () => {
+    expect(formatPercentage(0)).toBe('+0.0%')
+  })
+})
+
+describe('timeAgo', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2025-06-15T12:00:00Z'))
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  it("returns 'just now' for a date a few seconds ago", () => {
+    const date = new Date('2025-06-15T11:59:30Z')
+    expect(timeAgo(date)).toBe('just now')
+  })
+
+  it("returns 'Xm ago' for a date minutes ago", () => {
+    const date = new Date('2025-06-15T11:45:00Z')
+    expect(timeAgo(date)).toBe('15m ago')
+  })
+
+  it("returns 'Xh ago' for a date hours ago", () => {
+    const date = new Date('2025-06-15T09:00:00Z')
+    expect(timeAgo(date)).toBe('3h ago')
+  })
+
+  it("returns 'Xd ago' for a date days ago (less than 7)", () => {
+    const date = new Date('2025-06-13T12:00:00Z')
+    expect(timeAgo(date)).toBe('2d ago')
+  })
+
+  it('returns a formatted date for dates older than 7 days', () => {
+    const date = new Date('2025-05-01T12:00:00Z')
+    const result = timeAgo(date)
+    expect(result).toContain('May')
+    expect(result).toContain('1')
+    expect(result).toContain('2025')
   })
 })
 
