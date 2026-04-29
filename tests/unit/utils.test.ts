@@ -82,16 +82,12 @@ describe('formatStatusLabel', () => {
 })
 
 describe('formatPercentage', () => {
-  it("returns '+5.0%' for 5", () => {
-    expect(formatPercentage(5)).toBe('+5.0%')
-  })
-
-  it("returns '-3.2%' for -3.2", () => {
-    expect(formatPercentage(-3.2)).toBe('-3.2%')
-  })
-
-  it("returns '+0.0%' for 0", () => {
-    expect(formatPercentage(0)).toBe('+0.0%')
+  it.each([
+    [5, '+5.0%'],
+    [-3.2, '-3.2%'],
+    [0, '+0.0%'],
+  ])('formats %d as %s', (input, expected) => {
+    expect(formatPercentage(input)).toBe(expected)
   })
 })
 
@@ -105,24 +101,13 @@ describe('timeAgo', () => {
     jest.useRealTimers()
   })
 
-  it("returns 'just now' for a date a few seconds ago", () => {
-    const date = new Date('2025-06-15T11:59:30Z')
-    expect(timeAgo(date)).toBe('just now')
-  })
-
-  it("returns 'Xm ago' for a date minutes ago", () => {
-    const date = new Date('2025-06-15T11:45:00Z')
-    expect(timeAgo(date)).toBe('15m ago')
-  })
-
-  it("returns 'Xh ago' for a date hours ago", () => {
-    const date = new Date('2025-06-15T09:00:00Z')
-    expect(timeAgo(date)).toBe('3h ago')
-  })
-
-  it("returns 'Xd ago' for a date days ago (less than 7)", () => {
-    const date = new Date('2025-06-13T12:00:00Z')
-    expect(timeAgo(date)).toBe('2d ago')
+  it.each([
+    ['2025-06-15T11:59:30Z', 'just now'],
+    ['2025-06-15T11:45:00Z', '15m ago'],
+    ['2025-06-15T09:00:00Z', '3h ago'],
+    ['2025-06-13T12:00:00Z', '2d ago'],
+  ])('returns relative time for %s → %s', (iso, expected) => {
+    expect(timeAgo(new Date(iso))).toBe(expected)
   })
 
   it('returns a formatted date for dates older than 7 days', () => {

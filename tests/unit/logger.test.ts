@@ -43,17 +43,24 @@ describe('logger.info metadata', () => {
 })
 
 describe('logger.debug', () => {
+  let originalEnv: string | undefined
+
+  beforeEach(() => {
+    originalEnv = process.env.NODE_ENV
+  })
+
+  afterEach(() => {
+    process.env.NODE_ENV = originalEnv
+  })
+
   it('does not log when NODE_ENV is not development', () => {
-    const originalEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'production'
     const spy = spyOnConsole('debug')
     logger.debug('debug message')
     expect(spy).not.toHaveBeenCalled()
-    process.env.NODE_ENV = originalEnv
   })
 
   it('logs when NODE_ENV is development', () => {
-    const originalEnv = process.env.NODE_ENV
     process.env.NODE_ENV = 'development'
     const spy = spyOnConsole('debug')
     logger.debug('debug message')
@@ -61,7 +68,6 @@ describe('logger.debug', () => {
     const entry = parseLogOutput(spy)
     expect(entry.level).toBe('debug')
     expect(entry.message).toBe('debug message')
-    process.env.NODE_ENV = originalEnv
   })
 })
 
