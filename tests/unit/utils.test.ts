@@ -3,6 +3,8 @@ import {
   formatNumber,
   formatDate,
   formatDateTime,
+  formatPercentage,
+  timeAgo,
   getStatusColor,
   formatStatusLabel,
   cn,
@@ -76,6 +78,44 @@ describe('formatStatusLabel', () => {
 
   it('capitalizes single word', () => {
     expect(formatStatusLabel('pending')).toBe('Pending')
+  })
+})
+
+describe('formatPercentage', () => {
+  it.each([
+    [5, '+5.0%'],
+    [-3.2, '-3.2%'],
+    [0, '+0.0%'],
+  ])('formats %d as %s', (input, expected) => {
+    expect(formatPercentage(input)).toBe(expected)
+  })
+})
+
+describe('timeAgo', () => {
+  beforeEach(() => {
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2025-06-15T12:00:00Z'))
+  })
+
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
+  it.each([
+    ['2025-06-15T11:59:30Z', 'just now'],
+    ['2025-06-15T11:45:00Z', '15m ago'],
+    ['2025-06-15T09:00:00Z', '3h ago'],
+    ['2025-06-13T12:00:00Z', '2d ago'],
+  ])('returns relative time for %s → %s', (iso, expected) => {
+    expect(timeAgo(new Date(iso))).toBe(expected)
+  })
+
+  it('returns a formatted date for dates older than 7 days', () => {
+    const date = new Date('2025-05-01T12:00:00Z')
+    const result = timeAgo(date)
+    expect(result).toContain('May')
+    expect(result).toContain('1')
+    expect(result).toContain('2025')
   })
 })
 
